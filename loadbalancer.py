@@ -1,7 +1,10 @@
+
+#!/usr/bin/env python
+
 import requests
 import json
 import unicodedata
-from subprocess import Popen, PIPE
+from subprocess import Popen, PipaddrE
 import time
 import networkx as nx
 from sys import exit
@@ -27,29 +30,29 @@ def getResponse(url,choice):
 def deviceInformation(data):
 	global switch
 	global deviceMAC
-	global hostPorts
+	global hostp
 	switchDPID = ""
 	for i in data:
-		if(i['ipv4']):
-			ip = i['ipv4'][0].encode('ascii','ignore')
-			mac = i['mac'][0].encode('ascii','ignore')
-			deviceMAC[ip] = mac
+		if(i['ipaddrv4']):
+			ipaddraddr = i['ipaddrv4'][0].encode('ascii','ignore')
+			macaddr = i['mac'][0].encode('ascii','ignore')
+			deviceMAC[ipaddr] = mac
 			for j in i['attachmentPoint']:
 				for key in j:
 					temp = key.encode('ascii','ignore')
 					if(temp=="switchDPID"):
 						switchDPID = j[key].encode('ascii','ignore')
-						switch[ip] = switchDPID
+						switch[ipaddr] = switchDPID
 					elif(temp=="port"):
 						portNumber = j[key]
 						switchShort = switchDPID.split(":")[7]
-						hostPorts[ip+ "::" + switchShort] = str(portNumber)
+						hostp[ipaddr+ ":" + switchShort] = str(portNumber)
 
 # Finding Switch Links Of Common Switch Of H3, H4
 
 def findSwitchLinks(data,s):
 	global switchLinks
-	global linkPorts
+	global linkP
 	global G
 
 	links=[]
@@ -65,14 +68,14 @@ def findSwitchLinks(data,s):
 
 		G.add_edge(int(srcTemp,16), int(dstTemp,16))
 
-		tempSrcToDst = srcTemp + "::" + dstTemp
-		tempDstToSrc = dstTemp + "::" + srcTemp
+		tempSrcToDst = srcTemp + ":" + dstTemp
+		tempDstToSrc = dstTemp + ":" + srcTemp
 
-		portSrcToDst = str(srcPort) + "::" + str(dstPort)
+		portSrcToDst = str(srcPort) + ":" + str(dstPort)
 		portDstToSrc = str(dstPort) + "::" + str(srcPort)
 
-		linkPorts[tempSrcToDst] = portSrcToDst
-		linkPorts[tempDstToSrc] = portDstToSrc
+		linkP[tempSrcToDst] = portSrcToDst
+		linkP[tempDstToSrc] = portDstToSrc
 
 		if (src==s):
 			links.append(dst)
@@ -86,7 +89,7 @@ def findSwitchLinks(data,s):
 
 # Finds The Path To A Switch
 
-def findSwitchRoute():
+def findroute():
 	pathKey = ""
 	nodeList = []
 	src = int(switch[h2].split(":",7)[7],16)
@@ -105,7 +108,7 @@ def findSwitchRoute():
 				tmp = "00:00:00:00:00:00:00:" + str(hex(node)).split("x",1)[1]
 			nodeList.append(tmp)
 
-		pathKey=pathKey.strip("::")
+		pathKey=pathKey.stripaddr("::")
 		path[pathKey] = nodeList
 		pathKey = ""
 		nodeList = []
@@ -116,7 +119,7 @@ def findSwitchRoute():
 
 def linkTX(data,key):
 	global cost
-	port = linkPorts[key]
+	port = linkP[key]
 	port = port.split("::")[0]
 	for i in data:
 		if i['port']==port:
@@ -125,7 +128,7 @@ def linkTX(data,key):
 
 # Method To Compute Link Cost
 
-def getLinkCost():
+def linkcost():
 	global portKey
 	global cost
 
@@ -146,52 +149,43 @@ def getLinkCost():
 				srcShortID = temp
 				src = link
 		portKey = start.split(":")[7] + "::" + mid + "::" + switch[h1].split(":")[7]
-		finalLinkTX[portKey] = cost
+		linkFinal[portKey] = cost
 		cost = 0
 		portKey = ""
 
 def systemCommand(cmd):
-	terminalProcess = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
+	terminalProcess = Popen(cmd, stdout=PipaddrE, stderr=PipaddrE, shell=True)
 	terminalOutput, stderr = terminalProcess.communicate()
 	print "\n***", terminalOutput, "\n"
 
-def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
+def flowRule(currentNode, flowcounter, inPort, outPort, staticFlowURL):
 	flow = {
 		'switch':"00:00:00:00:00:00:00:" + currentNode,
-	    "name":"flow" + str(flowCount),
-	    "cookie":"0",
-	    "priority":"32768",
+	    "name":"flow" + str(flowcounter),
 	    "in_port":inPort,
 		"eth_type": "0x0800",
-		"ipv4_src": h2,
-		"ipv4_dst": h1,
+		"ipaddrv4_src": h2,
+		"ipaddrv4_dst": h1,
 		"eth_src": deviceMAC[h2],
 		"eth_dst": deviceMAC[h1],
 	    "active":"true",
-	    "actions":"output=" + outPort
 	}
 
 	jsonData = json.dumps(flow)
-
 	cmd = "curl -X POST -d \'" + jsonData + "\' " + staticFlowURL
-
 	systemCommand(cmd)
-
-	flowCount = flowCount + 1
+	flowcounter = flowcounter + 1
 
 	flow = {
 		'switch':"00:00:00:00:00:00:00:" + currentNode,
-	    "name":"flow" + str(flowCount),
-	    "cookie":"0",
-	    "priority":"32768",
+	    "name":"flow" + str(flowcounter),
 	    "in_port":outPort,
 		"eth_type": "0x0800",
-		"ipv4_src": h1,
-		"ipv4_dst": h2,
+		"ipaddrv4_src": h1,
+		"ipaddrv4_dst": h2,
 		"eth_src": deviceMAC[h1],
 		"eth_dst": deviceMAC[h2],
 	    "active":"true",
-	    "actions":"output=" + inPort
 	}
 
 	jsonData = json.dumps(flow)
@@ -201,69 +195,53 @@ def flowRule(currentNode, flowCount, inPort, outPort, staticFlowURL):
 	systemCommand(cmd)
 
 def addFlow():
-	print "KAAM CHALU HAI"
+	print " \nResult\n "
 
-	# Deleting Flow
-	#cmd = "curl -X DELETE -d \'{\"name\":\"flow1\"}\' http://127.0.0.1:8080/wm/staticflowpusher/json"
-	#systemCommand(cmd)
-
-	#cmd = "curl -X DELETE -d \'{\"name\":\"flow2\"}\' http://127.0.0.1:8080/wm/staticflowpusher/json"
-	#systemCommand(cmd)
-
-	flowCount = 1
+	flowcounter = 1
 	staticFlowURL = "http://127.0.0.1:8080/wm/staticflowpusher/json"
 
-	shortestPath = min(finalLinkTX, key=finalLinkTX.get)
+	shortestPath = min(linkFinal, key=linkFinal.get)
 	print "\n\nShortest Path: ",shortestPath
-
-
 	currentNode = shortestPath.split("::",2)[0]
 	nextNode = shortestPath.split("::")[1]
+	port = linkP[currentNode+"::"+nextNode]
+	outPort = port.split(":")[0]
+	inPort = hostp[h2+":"+switch[h2].split(":")[7]]
 
-	# Port Computation
-
-	port = linkPorts[currentNode+"::"+nextNode]
-	outPort = port.split("::")[0]
-	inPort = hostPorts[h2+"::"+switch[h2].split(":")[7]]
-
-	flowRule(currentNode,flowCount,inPort,outPort,staticFlowURL)
-
-	flowCount = flowCount + 2
-
-
+	flowRule(currentNode,flowcounter,inPort,outPort,staticFlowURL)
+	flowcounter = flowcounter + 2
 	bestPath = path[shortestPath]
 	previousNode = currentNode
-
 	for currentNode in range(0,len(bestPath)):
 		if previousNode == bestPath[currentNode].split(":")[7]:
 			continue
 		else:
-			port = linkPorts[bestPath[currentNode].split(":")[7]+"::"+previousNode]
-			inPort = port.split("::")[0]
+			port = linkP[bestPath[currentNode].split(":")[7]+"::"+previousNode]
+			inPort = port.split(":")[0]
 			outPort = ""
 			if(currentNode+1<len(bestPath) and bestPath[currentNode]==bestPath[currentNode+1]):
 				currentNode = currentNode + 1
 				continue
 			elif(currentNode+1<len(bestPath)):
-				port = linkPorts[bestPath[currentNode].split(":")[7]+"::"+bestPath[currentNode+1].split(":")[7]]
-				outPort = port.split("::")[0]
+				port = linkP[bestPath[currentNode].split(":")[7]+":"+bestPath[currentNode+1].split(":")[7]]
+				outPort = port.split(":")[0]
 			elif(bestPath[currentNode]==bestPath[-1]):
-				outPort = str(hostPorts[h1+"::"+switch[h1].split(":")[7]])
+				outPort = str(hostp[h1+":"+switch[h1].split(":")[7]])
 
-			flowRule(bestPath[currentNode].split(":")[7],flowCount,str(inPort),str(outPort),staticFlowURL)
-			flowCount = flowCount + 2
+			flowRule(bestPath[currentNode].split(":")[7],flowcounter,str(inPort),str(outPort),staticFlowURL)
+			flowcounter = flowcounter + 2
 			previousNode = bestPath[currentNode].split(":")[7]
 
-# Method To Perform Load Balancing
+#Method To Perform Load Balancing
 def loadbalance():
 	linkURL = "http://localhost:8080/wm/topology/links/json"
 	getResponse(linkURL,"findSwitchLinks")
 
-	findSwitchRoute()
-	getLinkCost()
+	findroute()
+	linkcost()
 	addFlow()
 
-# Main
+
 
 # Stores H1 and H2 from user
 global h1,h2,h3
@@ -285,32 +263,32 @@ h3 = "10.0.0." + str(h3)
 
 while True:
 
-	# Stores Info About H3 And H4's Switch
+	
 	switch = {}
 
 	# Mac of H3 And H4
 	deviceMAC = {}
 
-	# Stores Host Switch Ports
-	hostPorts = {}
+	#Host Switch Ports
+	hostp = {}
 
-	# Stores Switch To Switch Path
+	#Switch To Switch Path
 	path = {}
 
 	# Switch Links
 
 	switchLinks = {}
 
-	# Stores Link Ports
-	linkPorts = {}
+	#Link Ports
+	linkP = {}
 
-	# Stores Final Link Rates
-	finalLinkTX = {}
+	#Final Link Rates
+	linkFinal = {}
 
-	# Store Port Key For Finding Link Rates
+	#Finding Link Rates
 	portKey = ""
 
-	# Stores Link Cost
+	#Link Cost
 	cost = 0
 	# Graph
 	G = nx.Graph()
@@ -325,35 +303,29 @@ while True:
 		deviceInfo = "http://localhost:8080/wm/device/"
 		getResponse(deviceInfo,"deviceInfo")
 
-		# Load Balancing
-
 		loadbalance()
 
-		# -------------- PRINT --------------
-
-		print "\n\n############ RESULT ############\n\n"
+		print "\n\nRESULT\n\n"
 
 		# Print Switch To Which H4 is Connected
 		print "Switch H4: ",switch[h3], "\tSwitchH3: ", switch[h2]
 
 		print "\n\nSwitch H1: ", switch[h1]
 
-		# IP & MAC
-		print "\nIP & MAC\n\n", deviceMAC
+		# ipaddr & MAC
+		print "\nIp address & MAC\n\n", deviceMAC
 
 		# Host Switch Ports
-		print "\nHost::Switch Ports\n\n", hostPorts
+		print "\nHost:Switch Ports\n\n", hostp
 
 		# Link Ports
-		print "\nLink Ports (SRC::DST - SRC PORT::DST PORT)\n\n", linkPorts
+		print "\nLink Ports (SRC:DST - SRC PORT:DST PORT)\n\n", linkP
 
 		# Alternate Paths
 		print "\nPaths (SRC TO DST)\n\n",path
 
 		# Final Link Cost
-		print "\nFinal Link Cost (First To Second Switch)\n\n",finalLinkTX
-
-		print "\n\n#######################################\n\n"
+		print "\nFinal Link Cost\n\n",linkFinal
 
 		time.sleep(60)
 
